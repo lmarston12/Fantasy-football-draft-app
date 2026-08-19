@@ -29,6 +29,12 @@ priority order; check items off as they land.
 
 ## Improvements
 
+- [ ] **Add support for ESPN leagues (not just Sleeper)**
+
+  App currently assumes Sleeper as the league platform. Add an option to
+  connect/import from an ESPN fantasy football league as well, so users on
+  ESPN aren't locked out.
+
 - [ ] **Modernize the UI**
 
   Current UI (cards, chips, a plain data table) reads as generic
