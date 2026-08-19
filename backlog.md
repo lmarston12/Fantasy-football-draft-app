@@ -5,25 +5,27 @@ priority order; check items off as they land.
 
 ## High priority
 
-- [ ] **Direct GitHub push + auto-deploy loop (Claude → GitHub → Vercel)**
+- [x] **Direct GitHub push + auto-deploy loop (Claude Code Desktop → GitHub → Vercel)**
 
-  Right now Claude can't push to this repo — the claude.ai GitHub connector
-  only grants *read* access; writing requires a GitHub App installed on the
-  repo with write permission, which isn't set up yet (see
-  `github.com/settings/installations` — no Claude/Anthropic app listed).
-  Full root-cause writeup:
+  Claude Code Desktop pushes to this repo fine using local git credentials —
+  no GitHub App needed for this path. Vercel auto-deploys on every push to
+  `main` for GitHub-connected projects by default, confirmed working.
+
+- [ ] **Direct GitHub push access from cloud/browser Claude Code (claude.ai)**
+
+  Cloud/browser Claude Code sessions (claude.ai) still can't push to this
+  repo — the claude.ai GitHub connector only grants *read* access; writing
+  requires a GitHub App installed on the repo with write permission, which
+  isn't set up yet (see `github.com/settings/installations` — no
+  Claude/Anthropic app listed). Full root-cause writeup:
   https://claude.ai/code/artifact/a3196e38-ecd7-4b52-a4c5-683e9b4ba84a
 
-  The Vercel side is likely already solved: this project was imported
-  straight from the GitHub repo, and Vercel auto-deploys on every push to
-  `main` for GitHub-connected projects by default. Worth confirming (push a
-  trivial change and watch the Vercel dashboard for a new deployment) rather
-  than assuming — but the missing piece is almost certainly just Claude's
-  GitHub write access, not Vercel's side of the hook.
+  Note: this only affects the claude.ai/browser path. Claude Code Desktop
+  already has direct push access via local git credentials (see above).
 
-  **Done when:** Claude can `git push` to this repo directly (no manual
-  zip/local-terminal round trip), and that push shows up as a new Vercel
-  deployment without any manual step in between.
+  **Done when:** a cloud/browser Claude Code session can `git push` to this
+  repo directly (no manual zip/local-terminal round trip), and that push
+  shows up as a new Vercel deployment without any manual step in between.
 
 ## Improvements
 
