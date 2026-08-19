@@ -1,8 +1,8 @@
 # Fantasy Draft Assistant
 
-A small, free web app that connects to your **Sleeper** fantasy football
-league and recommends the best available player during your live draft —
-aware of your league's scoring, roster construction, who's already been
+A small, free web app that connects to your **Sleeper** or **ESPN** fantasy
+football league and recommends the best available player during your live
+draft — aware of your league's scoring, roster construction, who's already been
 drafted, and your own team's needs.
 
 - **Live draft board** that auto-refreshes as picks come in.
@@ -28,9 +28,14 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:3000>, enter your Sleeper username, pick your league
-and your team, and you're on the draft board. No password is ever requested —
-the app only reads public Sleeper data.
+Open <http://localhost:3000> and pick your platform:
+
+- **Sleeper:** enter your username, pick your league and team. No password ever
+  — the app only reads public Sleeper data.
+- **ESPN:** enter your league ID and season. Public leagues need nothing more;
+  private leagues need your `espn_s2` and `SWID` cookies (copied from a
+  logged-in ESPN browser session) — used read-only, sent only with your
+  requests, and never stored on the server.
 
 ### Other commands
 
@@ -105,9 +110,13 @@ explicitly rather than added silently.
 
 **Limitations to be aware of:**
 
-- **Sleeper only (for now).** The data layer is behind a provider interface
-  so ESPN/Yahoo can be added later — see
-  [`docs/ADDING_A_PROVIDER.md`](docs/ADDING_A_PROVIDER.md).
+- **Sleeper and ESPN.** Both sit behind one provider interface; Yahoo can be
+  added the same way — see
+  [`docs/ADDING_A_PROVIDER.md`](docs/ADDING_A_PROVIDER.md). ESPN has no official
+  API, so the ESPN path uses their unofficial read endpoints and can break if
+  ESPN changes them. Private ESPN leagues need your `espn_s2`/`SWID` cookies
+  (used read-only, per request, never stored); public leagues need nothing. ESPN
+  offers no reliable consensus rank, so import a rankings CSV for ESPN drafts.
 - **Rankings, not projections.** The engine ranks value from Sleeper's
   consensus rank (or your CSV) and your league settings. It is a strong,
   transparent heuristic — not a paid expert projection model. Import your own
@@ -124,12 +133,12 @@ explicitly rather than added silently.
 ```
 src/
   app/                     # Next.js App Router pages + API routes
-    api/sleeper/**         # Server-side proxy to Sleeper (caches player catalog)
+    api/[provider]/**      # Server-side proxy (Sleeper/ESPN; caches catalog)
     draft/[draftId]/       # The live draft board page
   components/              # UI (draft board, tables, panels, CSV import)
   hooks/                   # useLeagueData, useDraftPolling
   lib/
-    providers/             # DraftProvider interface + Sleeper adapter
+    providers/             # DraftProvider interface + Sleeper/ESPN adapters + registry
     rankings/              # VBD engine + CSV import
     draft/                 # roster-needs logic
     cache.ts               # in-memory TTL cache for the player catalog

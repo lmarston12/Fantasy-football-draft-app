@@ -29,11 +29,15 @@ priority order; check items off as they land.
 
 ## Improvements
 
-- [ ] **Add support for ESPN leagues (not just Sleeper)**
+- [x] **Add support for ESPN leagues (not just Sleeper)**
 
-  App currently assumes Sleeper as the league platform. Add an option to
-  connect/import from an ESPN fantasy football league as well, so users on
-  ESPN aren't locked out.
+  Done. Added an ESPN adapter behind the existing `DraftProvider` interface and
+  generalized the API route tree from `/api/sleeper/*` to `/api/[provider]/*`
+  (registry in `src/lib/providers/registry.ts`). The connect form now has a
+  Sleeper | ESPN toggle; ESPN users enter a league ID + season, with optional
+  `espn_s2`/`SWID` cookies for private leagues (sent per-request, kept only in
+  tab `sessionStorage`, never persisted server-side or logged). ESPN has no
+  reliable consensus rank, so the CSV rankings import is the fallback there.
 
 - [ ] **Modernize the UI**
 

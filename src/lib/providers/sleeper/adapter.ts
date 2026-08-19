@@ -107,6 +107,8 @@ export class SleeperProvider implements DraftProvider {
     return user.user_id;
   }
 
+  // Sleeper's public API needs no credentials, so the optional `auth` argument
+  // on these methods is accepted (to satisfy the interface) and ignored.
   async getLeagues(userId: string, season: string): Promise<LeagueSettings[]> {
     const leagues = await api.fetchLeagues(userId, season);
     return leagues.map(toLeagueSettings);

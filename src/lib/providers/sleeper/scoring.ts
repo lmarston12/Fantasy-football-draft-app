@@ -23,11 +23,3 @@ export function normalizeScoring(
     raw: scoring,
   };
 }
-
-/** Human label for the PPR flavor, for display. */
-export function pprLabel(scoring: ScoringSettings): string {
-  const ppr = scoring.pointsPerReception;
-  if (ppr >= 1) return "PPR";
-  if (ppr > 0) return `${ppr} PPR`;
-  return "Standard";
-}

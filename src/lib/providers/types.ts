@@ -9,6 +9,18 @@
  * See docs/ADDING_A_PROVIDER.md for how to add a new provider.
  */
 
+/**
+ * Optional per-request credentials a provider may need. Sleeper needs none;
+ * ESPN needs `espnS2`/`swid` cookies for private leagues. These are secrets:
+ * accepted at request time, forwarded straight to the platform, never
+ * persisted server-side and never logged. Kept generic so other OAuth-style
+ * platforms (Yahoo) can reuse the shape.
+ */
+export interface ProviderAuth {
+  espnS2?: string;
+  swid?: string;
+}
+
 /** Fantasy-relevant player positions we reason about. */
 export type Position = "QB" | "RB" | "WR" | "TE" | "K" | "DEF";
 
@@ -75,7 +87,11 @@ export interface LeagueSettings {
   /** Ordered roster construction, e.g. [QB, RB, RB, WR, WR, TE, FLEX, ...]. */
   rosterSlots: RosterSlot[];
   scoring: ScoringSettings;
-  /** Sleeper draft id associated with this league, when one exists. */
+  /**
+   * Draft id associated with this league, when one exists. Sleeper exposes a
+   * distinct draft id; ESPN has no separate draft entity, so its adapter uses
+   * the league id here.
+   */
   draftId: string | null;
 }
 
@@ -144,24 +160,38 @@ export interface DraftInfo {
 export interface DraftProvider {
   readonly name: string;
 
-  /** Resolve a username to the platform's internal user id. */
+  /**
+   * Resolve a username to the platform's internal user id. Platforms that
+   * don't identify leagues by username (ESPN) throw a clear error instead.
+   */
   getUserId(username: string): Promise<string>;
 
   /** List a user's leagues for a given season (e.g. "2025"). */
-  getLeagues(userId: string, season: string): Promise<LeagueSettings[]>;
+  getLeagues(
+    userId: string,
+    season: string,
+    auth?: ProviderAuth,
+  ): Promise<LeagueSettings[]>;
 
   /** Fetch full normalized league settings by id. */
-  getLeague(leagueId: string): Promise<LeagueSettings>;
+  getLeague(leagueId: string, auth?: ProviderAuth): Promise<LeagueSettings>;
 
   /** Teams in a league. */
-  getTeams(leagueId: string): Promise<Team[]>;
+  getTeams(leagueId: string, auth?: ProviderAuth): Promise<Team[]>;
 
   /** Draft metadata for a draft id. */
-  getDraft(draftId: string): Promise<DraftInfo>;
+  getDraft(draftId: string, auth?: ProviderAuth): Promise<DraftInfo>;
 
   /** All picks made so far in a draft. */
-  getPicks(draftId: string): Promise<DraftPick[]>;
+  getPicks(draftId: string, auth?: ProviderAuth): Promise<DraftPick[]>;
 
-  /** The platform's full player catalog, normalized. */
-  getPlayerCatalog(): Promise<NormalizedPlayer[]>;
+  /**
+   * The platform's full player catalog, normalized. Some platforms (ESPN)
+   * scope the catalog by season and may need auth for private leagues; Sleeper
+   * ignores both.
+   */
+  getPlayerCatalog(opts?: {
+    season?: string;
+    auth?: ProviderAuth;
+  }): Promise<NormalizedPlayer[]>;
 }

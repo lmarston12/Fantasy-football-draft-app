@@ -1,10 +1,25 @@
 # Adding a draft provider (e.g. ESPN or Yahoo)
 
 The app talks to fantasy platforms only through the `DraftProvider` interface
-in [`src/lib/providers/types.ts`](../src/lib/providers/types.ts). Sleeper is
-the only implementation today. Adding another platform is a self-contained
-task: implement the interface, normalize that platform's data into the shared
-domain types, and expose it through the API routes.
+in [`src/lib/providers/types.ts`](../src/lib/providers/types.ts). Sleeper and
+ESPN are implemented today. Adding another platform is a self-contained task:
+implement the interface, normalize that platform's data into the shared domain
+types, and register it — the API routes are already generic.
+
+## Wiring (already generalized)
+
+The route tree is `src/app/api/[provider]/**`; each handler resolves the
+concrete adapter via `getProvider(name)` in
+[`src/lib/providers/registry.ts`](../src/lib/providers/registry.ts). So adding a
+provider needs **no route changes** — implement the adapter and add one line to
+the registry map. The browser client
+([`src/lib/client/api.ts`](../src/lib/client/api.ts)) takes the provider as its
+first argument and builds `/api/<provider>/…`.
+
+Providers that need per-request credentials (ESPN private leagues) accept an
+optional `ProviderAuth`; the client sends it as request **headers** (never query
+params), the route reads it via `authFromHeaders`, and the adapter forwards it
+to the platform. Nothing is persisted or logged.
 
 ## Steps
 
@@ -23,16 +38,22 @@ domain types, and expose it through the API routes.
    - `LeagueSettings.rosterSlots` uses the shared `SlotType`s; map exotic
      slots to `BENCH` if they don't affect starting-lineup math.
 
-3. **Wire up routes.** Either add `?provider=<platform>` handling to the
-   existing `src/app/api/sleeper/**` routes (rename to `/api/<provider>` or a
-   generic `/api/draft`), or add a parallel route tree. Keep the browser
-   contract (the shapes returned) identical so the UI is unchanged.
+3. **Register it.** Add your provider to the map in
+   `src/lib/providers/registry.ts`. The generic `/api/[provider]/**` routes and
+   the `provider`-aware browser client pick it up automatically — keep the
+   returned shapes identical so the UI is unchanged.
 
 4. **Add fixtures + tests.** Mirror `src/lib/testing/fixtures.ts` with a
    couple of real (anonymized) payloads and assert your adapter normalizes
    them correctly.
 
-## ESPN specifics — read before starting
+## ESPN specifics
+
+> **Implemented** — see [`src/lib/providers/espn/`](../src/lib/providers/espn/).
+> ESPN uses a composite league reference `"{season}-{leagueId}"` as both its
+> `leagueId` and `draftId` (it has no separate draft entity), and its player
+> catalog is fetched from the public season-level endpoint. The notes below
+> record the design constraints.
 
 ESPN has **no official public API**. Integrations use an *unofficial*,
 undocumented endpoint (`lm-api-reads.fantasy.espn.com` /
