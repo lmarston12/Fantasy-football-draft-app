@@ -16,6 +16,7 @@ import type {
   DraftInfo,
   LeagueSettings,
   NormalizedPlayer,
+  ProviderAuth,
   Team,
 } from "@/lib/providers/types";
 
@@ -33,8 +34,11 @@ interface State {
 }
 
 export function useLeagueData(
+  provider: string,
   leagueId: string | null,
   draftId: string,
+  season: string | null,
+  auth?: ProviderAuth,
 ): State {
   const [state, setState] = useState<State>({
     data: null,
@@ -42,21 +46,25 @@ export function useLeagueData(
     error: null,
   });
 
+  // Serialize auth so the effect re-runs if the credentials actually change,
+  // without depending on a new object identity every render.
+  const authKey = auth ? `${auth.espnS2 ?? ""}:${auth.swid ?? ""}` : "";
+
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       setState({ data: null, loading: true, error: null });
       try {
-        const draft = await getDraft(draftId);
+        const draft = await getDraft(provider, draftId, auth);
         const resolvedLeagueId = leagueId ?? draft.leagueId;
         const [{ league, teams }, players] = await Promise.all([
           resolvedLeagueId
-            ? getLeague(resolvedLeagueId)
+            ? getLeague(provider, resolvedLeagueId, auth)
             : Promise.reject(
                 new Error("Could not determine the league for this draft."),
               ),
-          getPlayers(),
+          getPlayers(provider, season ?? undefined, auth),
         ]);
         if (cancelled) return;
         setState({
@@ -77,7 +85,8 @@ export function useLeagueData(
     return () => {
       cancelled = true;
     };
-  }, [leagueId, draftId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, leagueId, draftId, season, authKey]);
 
   return state;
 }

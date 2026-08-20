@@ -29,11 +29,41 @@ priority order; check items off as they land.
 
 ## Improvements
 
-- [ ] **Add support for ESPN leagues (not just Sleeper)**
+- [x] **Add support for ESPN leagues (not just Sleeper)**
 
-  App currently assumes Sleeper as the league platform. Add an option to
-  connect/import from an ESPN fantasy football league as well, so users on
-  ESPN aren't locked out.
+  Done. Added an ESPN adapter behind the existing `DraftProvider` interface and
+  generalized the API route tree from `/api/sleeper/*` to `/api/[provider]/*`
+  (registry in `src/lib/providers/registry.ts`). The connect form now has a
+  Sleeper | ESPN toggle; ESPN users enter a league ID + season, with optional
+  `espn_s2`/`SWID` cookies for private leagues (sent per-request, kept only in
+  tab `sessionStorage`, never persisted server-side or logged). ESPN has no
+  reliable consensus rank, so the CSV rankings import is the fallback there.
+
+- [x] **Platform toggle showed "Espn" instead of "ESPN"**
+
+  The connect-form platform toggle title-cased the provider name via a
+  `capitalize` class, rendering the ESPN initialism as "Espn". Fixed with an
+  explicit `PROVIDER_LABEL` map in `src/components/ConnectForm.tsx`.
+
+- [ ] **Easier ESPN sign-in (avoid manual espn_s2 / SWID copy)**
+
+  Private ESPN leagues currently require the user to open browser dev tools and
+  hand-copy the `espn_s2` and `SWID` cookies. That's the biggest friction point
+  in the ESPN flow. Explore a smoother path, e.g.:
+  - A guided helper with screenshots / a bookmarklet that surfaces the two
+    cookie values in one click.
+  - An ESPN OAuth / official login flow if one becomes viable (ESPN has no
+    official fantasy API today, so this may not be possible).
+  - Accepting a full pasted `Cookie` header and parsing the two values out.
+
+  Keep the same secret-handling guarantees: read-only, per-request, tab-only
+  storage, never persisted server-side or logged.
+
+- [ ] **Replace the default Vercel/Next favicon**
+
+  App still ships the stock framework favicon. Add a real icon so browser tabs
+  and bookmarks don't read as a generic scaffold. (`src/app/favicon.ico` /
+  `icon` metadata.)
 
 - [ ] **Modernize the UI**
 

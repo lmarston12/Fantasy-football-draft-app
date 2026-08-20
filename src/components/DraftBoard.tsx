@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { LeagueData } from "@/hooks/useLeagueData";
 import type { DraftPick } from "@/lib/providers/types";
 import { buildDraftBoard } from "@/lib/rankings/engine";
-import { pprLabel } from "@/lib/providers/sleeper/scoring";
+import { pprLabel } from "@/lib/providers/scoring-format";
 import { AvailablePlayersTable } from "./AvailablePlayersTable";
 import { MyRosterPanel } from "./MyRosterPanel";
 import { NeedsSummary } from "./NeedsSummary";

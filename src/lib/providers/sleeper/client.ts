@@ -11,6 +11,8 @@
  * app's domain types happens in `adapter.ts`.
  */
 
+import { ProviderApiError } from "../errors";
+
 const DEFAULT_BASE_URL = "https://api.sleeper.app/v1";
 
 /** Overridable base URL (used by tests; defaults to the real API). */
@@ -18,13 +20,9 @@ export function sleeperBaseUrl(): string {
   return process.env.SLEEPER_BASE_URL?.replace(/\/$/, "") ?? DEFAULT_BASE_URL;
 }
 
-export class SleeperApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly url: string,
-  ) {
-    super(message);
+export class SleeperApiError extends ProviderApiError {
+  constructor(message: string, status: number, url: string) {
+    super(message, status, url);
     this.name = "SleeperApiError";
   }
 }

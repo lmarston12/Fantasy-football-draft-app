@@ -10,7 +10,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDraftPicks } from "@/lib/client/api";
-import type { DraftPick, DraftStatus } from "@/lib/providers/types";
+import type {
+  DraftPick,
+  DraftStatus,
+  ProviderAuth,
+} from "@/lib/providers/types";
 
 export interface DraftPollState {
   picks: DraftPick[];
@@ -25,8 +29,10 @@ export interface DraftPollState {
 const DEFAULT_INTERVAL_MS = 5000;
 
 export function useDraftPolling(
+  provider: string,
   draftId: string,
   status: DraftStatus,
+  auth?: ProviderAuth,
   intervalMs: number = DEFAULT_INTERVAL_MS,
 ): DraftPollState {
   const [picks, setPicks] = useState<DraftPick[]>([]);
@@ -35,11 +41,13 @@ export function useDraftPolling(
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const inFlight = useRef(false);
 
+  const authKey = auth ? `${auth.espnS2 ?? ""}:${auth.swid ?? ""}` : "";
+
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
     try {
-      const next = await getDraftPicks(draftId);
+      const next = await getDraftPicks(provider, draftId, auth);
       setPicks(next);
       setError(null);
       setLastUpdated(Date.now());
@@ -49,7 +57,8 @@ export function useDraftPolling(
       setLoading(false);
       inFlight.current = false;
     }
-  }, [draftId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, draftId, authKey]);
 
   useEffect(() => {
     void (async () => {
