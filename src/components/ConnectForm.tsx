@@ -29,6 +29,12 @@ import type { LeagueSettings, ProviderAuth, Team } from "@/lib/providers/types";
 type Provider = "sleeper" | "espn";
 type Step = "username" | "espn" | "league" | "team";
 
+/** Display labels — ESPN is an initialism, so not title-cased. */
+const PROVIDER_LABEL: Record<Provider, string> = {
+  sleeper: "Sleeper",
+  espn: "ESPN",
+};
+
 export function ConnectForm() {
   const router = useRouter();
   const [provider, setProvider] = useState<Provider>("sleeper");
@@ -161,13 +167,13 @@ export function ConnectForm() {
             key={p}
             type="button"
             onClick={() => switchProvider(p)}
-            className={`rounded-md px-4 py-1.5 text-sm font-medium capitalize transition-colors ${
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
               provider === p
                 ? "bg-emerald-600 text-white"
                 : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
             }`}
           >
-            {p}
+            {PROVIDER_LABEL[p]}
           </button>
         ))}
       </div>
