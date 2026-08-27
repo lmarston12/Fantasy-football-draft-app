@@ -58,6 +58,61 @@ priority order; check items off as they land.
   API). Secret handling is unchanged: read-only, per-request headers, tab-only
   `sessionStorage`, never persisted server-side or logged.
 
+- [ ] **ESPN sign-in polish (no new infra)**
+
+  Small wins on top of the paste + bookmarklet + guide flow, all client-side,
+  no change to the secret model. Est. ~1–2 hrs total.
+  - **Copy-the-bookmarklet button.** Some users can't drag a `javascript:` link
+    to the bookmarks bar (locked-down browsers, mobile). Add a "copy bookmarklet
+    code" button next to the drag link so they can create the bookmark manually.
+    The bookmarklet source already exists as `ESPN_BOOKMARKLET` in
+    `src/components/ConnectForm.tsx`.
+  - **Clipboard read shortcut.** Add a "Paste from clipboard" button on the
+    cookie textarea that calls `navigator.clipboard.readText()` and runs it
+    through `parseEspnCookies` (`src/lib/client/espn-cookies.ts`) — one tap after
+    the bookmarklet copies, instead of a manual paste. Feature-detect and hide
+    when the API/permission is unavailable.
+  - **Parse-state affordance.** Show a small ✓/✗ per field (espn_s2 / SWID) so
+    the user can see at a glance which value the paste resolved.
+
+  Note: none of this defeats HttpOnly `espn_s2` — see the extension item below
+  for the only reliable "no dev tools at all" path.
+
+- [ ] **ESPN cookies via a browser extension (the real "no dev tools" path)**
+
+  The one clean way to remove dev tools entirely *and* handle an HttpOnly
+  `espn_s2` (which a bookmarklet/`document.cookie` cannot read). A tiny
+  extension with the `cookies` permission for `espn.com` reads both `espn_s2`
+  and `SWID` and hands them to the app.
+
+  **Sketch:**
+  - Manifest V3 extension, host permission `https://*.espn.com/*`, permission
+    `cookies`. A single action/popup button "Send my ESPN cookies to Draft
+    Assistant".
+  - On click, `chrome.cookies.get({url, name})` for `espn_s2` and `SWID`, then
+    hand off to the app. Handoff options, cleanest first:
+    - deep link the app with the values in a **fragment** (`#…`, never a query —
+      keep them out of server logs/history), app reads `location.hash` and
+      clears it immediately; or
+    - `window.postMessage` if the app tab is already open.
+  - App side: a small receiver that drops the values straight into the existing
+    `espnS2`/`swid` state — no new storage layer; still tab-only `sessionStorage`
+    afterward.
+
+  **Cost / trade-offs:** build ~1 day; then Chrome Web Store + Firefox AMO
+  review and publishing; cross-browser + manifest upkeep when ESPN or store
+  policy shifts. **Only worth it if ESPN private-league users are a meaningful
+  share of the audience** — for personal/small use the paste + guide flow is the
+  right cost/benefit. Keep every secret guarantee: read-only, per-request,
+  tab-only, never persisted server-side, never logged, never in a query string.
+
+  **Rejected alternative — server-side login proxy.** Having the user type their
+  ESPN email/password into our app and driving a headless browser (Playwright)
+  to capture cookies server-side would also remove dev tools, but it breaks the
+  app's core "no server-side secrets" promise, means handling a user's ESPN
+  password, and is brittle against ESPN's Disney OneID login + CAPTCHA + MFA and
+  bot detection. High effort, high risk, security regression — **do not pursue.**
+
 - [ ] **Replace the default Vercel/Next favicon**
 
   App still ships the stock framework favicon. Add a real icon so browser tabs
