@@ -60,11 +60,15 @@ undocumented endpoint (`lm-api-reads.fantasy.espn.com` /
 `fantasy.espn.com/apis/v3/...`). Practical caveats to design around and to
 surface in the UI:
 
-- **Private leagues need cookies.** For a private league the user must copy
+- **Private leagues need cookies.** For a private league the user must supply
   their `espn_s2` and `SWID` cookies from a logged-in browser session; the
   adapter sends them as request cookies. Public leagues need none. Treat these
   as secrets: accept them at request time, never log them, and don't persist
-  them server-side.
+  them server-side. To reduce the copy-paste friction, the connect form accepts
+  a whole pasted cookie blob and extracts the two values via
+  [`parseEspnCookies`](../src/lib/client/espn-cookies.ts), and offers a
+  bookmarklet that copies them off the ESPN page (which can't read `espn_s2`
+  when ESPN marks it HttpOnly — manual copy is the fallback).
 - **It can break without notice.** Because the API is unofficial, ESPN can
   change field names or shapes at any time. Isolate all of that fragility in
   the adapter and fail gracefully.

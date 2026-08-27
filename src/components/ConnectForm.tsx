@@ -13,7 +13,7 @@
  * tab's sessionStorage — never persisted server-side and never logged.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   getLeague,
@@ -24,6 +24,7 @@ import {
 import { pprLabel } from "@/lib/providers/scoring-format";
 import { formatEspnLeagueRef } from "@/lib/providers/espn/ref";
 import { storeEspnAuth } from "@/lib/client/espn-session";
+import { parseEspnCookies } from "@/lib/client/espn-cookies";
 import type { LeagueSettings, ProviderAuth, Team } from "@/lib/providers/types";
 
 type Provider = "sleeper" | "espn";
@@ -34,6 +35,15 @@ const PROVIDER_LABEL: Record<Provider, string> = {
   sleeper: "Sleeper",
   espn: "ESPN",
 };
+
+/**
+ * Bookmarklet the user drags to their toolbar and clicks while on their ESPN
+ * league page. It reads the script-visible cookies, copies `espn_s2`/`SWID` to
+ * the clipboard, and falls back to a prompt. Note: ESPN sometimes marks
+ * `espn_s2` HttpOnly, which JS can't read — the paste-from-devtools path below
+ * is the reliable fallback for that case.
+ */
+const ESPN_BOOKMARKLET = `javascript:(function(){var c=document.cookie,g=function(n){var m=c.match(new RegExp('(?:^|; )'+n+'=([^;]*)'));return m?n+'='+m[1]:''},s=[g('espn_s2'),g('SWID')].filter(Boolean).join('; ');if(!s){alert('No ESPN cookies found here. Open your ESPN league page first (and note espn_s2 may be HttpOnly — use the manual copy if so).');return}if(navigator.clipboard){navigator.clipboard.writeText(s).then(function(){alert('Copied! Paste it back into the draft app.')},function(){prompt('Copy these cookies:',s)})}else{prompt('Copy these cookies:',s)}})();`;
 
 export function ConnectForm() {
   const router = useRouter();
@@ -54,6 +64,35 @@ export function ConnectForm() {
   const [showPrivate, setShowPrivate] = useState(false);
   const [espnS2, setEspnS2] = useState("");
   const [swid, setSwid] = useState("");
+  const [cookiePaste, setCookiePaste] = useState("");
+  const [parsedHint, setParsedHint] = useState<string | null>(null);
+
+  // React blocks `javascript:` in an href prop, so set the bookmarklet URL on
+  // the DOM node directly — this keeps the link draggable to the bookmarks bar.
+  const bookmarkletRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (bookmarkletRef.current) bookmarkletRef.current.href = ESPN_BOOKMARKLET;
+  });
+
+  /** Parse a pasted cookie blob and fill in whichever fields we recognize. */
+  function handleCookiePaste(value: string) {
+    setCookiePaste(value);
+    const parsed = parseEspnCookies(value);
+    if (!parsed) {
+      setParsedHint(value.trim() ? "Couldn't find espn_s2 or SWID in that." : null);
+      return;
+    }
+    const filled: string[] = [];
+    if (parsed.espnS2) {
+      setEspnS2(parsed.espnS2);
+      filled.push("espn_s2");
+    }
+    if (parsed.swid) {
+      setSwid(parsed.swid);
+      filled.push("SWID");
+    }
+    setParsedHint(filled.length ? `Filled in ${filled.join(" and ")}.` : null);
+  }
 
   useEffect(() => {
     getState(provider)
@@ -69,6 +108,8 @@ export function ConnectForm() {
     setLeagues([]);
     setLeagueSel(null);
     setTeams([]);
+    setCookiePaste("");
+    setParsedHint(null);
   }
 
   async function submitUsername(e: React.FormEvent) {
@@ -254,6 +295,54 @@ export function ConnectForm() {
             />
           </div>
 
+          {/* Always-available reference, independent of the private checkbox. */}
+          <details className="rounded-lg border border-black/10 p-3 text-sm dark:border-white/10">
+            <summary className="cursor-pointer font-medium text-zinc-700 dark:text-zinc-300">
+              How do I get my ESPN cookies?
+            </summary>
+            <div className="mt-3 flex flex-col gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+              <p>
+                Only <strong>private</strong> leagues need this — public leagues
+                load with just the league ID. Private leagues need two cookies,{" "}
+                <code>espn_s2</code> and <code>SWID</code>, from a browser where
+                you&apos;re logged in to ESPN. Three ways, easiest first:
+              </p>
+              <ol className="ml-4 list-decimal space-y-1">
+                <li>
+                  <strong>Bookmarklet.</strong> Drag this{" "}
+                  <a
+                    ref={bookmarkletRef}
+                    onClick={(e) => e.preventDefault()}
+                    className="font-medium text-emerald-600 underline dark:text-emerald-400"
+                    title="Drag me to your bookmarks bar, then click me on your ESPN league page"
+                  >
+                    ESPN cookie grabber
+                  </a>{" "}
+                  to your bookmarks bar, open your ESPN league page, and click it
+                  — it copies both cookies to your clipboard. Then check{" "}
+                  <em>This is a private league</em> below and paste.
+                </li>
+                <li>
+                  <strong>Copy the whole cookie string.</strong> In dev tools →
+                  Application (or Storage) → Cookies → the ESPN domain, copy the
+                  row values, then paste them into the private-league box below —
+                  we pull <code>espn_s2</code> and <code>SWID</code> out for you.
+                </li>
+                <li>
+                  <strong>Copy each value.</strong> From that same Cookies panel,
+                  copy <code>espn_s2</code> and <code>SWID</code> individually
+                  into the two fields below.
+                </li>
+              </ol>
+              <p>
+                Note: ESPN sometimes marks <code>espn_s2</code> HttpOnly, which
+                the bookmarklet can&apos;t read — use option 2 or 3 if that
+                happens. Cookies are used read-only, sent only with your
+                requests, and never stored on our server.
+              </p>
+            </div>
+          </details>
+
           <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
               <input
@@ -266,11 +355,38 @@ export function ConnectForm() {
             {showPrivate && (
               <div className="mt-3 flex flex-col gap-3">
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Private ESPN leagues need two cookies from a browser where
-                  you&apos;re logged in to ESPN. Open your ESPN league, then in
-                  your browser&apos;s dev tools copy the <code>espn_s2</code> and{" "}
-                  <code>SWID</code> cookie values. They&apos;re used read-only,
-                  sent only with your requests, and never stored on our server.
+                  Paste your whole cookie string and we&apos;ll pull{" "}
+                  <code>espn_s2</code> and <code>SWID</code> out — or fill the
+                  fields yourself. Need help?{" "}
+                  <span className="text-zinc-600 dark:text-zinc-300">
+                    See “How do I get my ESPN cookies?” above.
+                  </span>
+                </p>
+                <div>
+                  <label
+                    htmlFor="cookiePaste"
+                    className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400"
+                  >
+                    Paste cookies
+                  </label>
+                  <textarea
+                    id="cookiePaste"
+                    value={cookiePaste}
+                    onChange={(e) => handleCookiePaste(e.target.value)}
+                    rows={2}
+                    placeholder="espn_s2=…; SWID={…}"
+                    autoComplete="off"
+                    className={`${inputClass} font-mono text-xs`}
+                  />
+                  {parsedHint && (
+                    <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
+                      {parsedHint}
+                    </p>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Cookies are used read-only, sent only with your requests, and
+                  never stored on our server.
                 </p>
                 <div>
                   <label
