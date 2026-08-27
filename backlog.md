@@ -45,19 +45,18 @@ priority order; check items off as they land.
   `capitalize` class, rendering the ESPN initialism as "Espn". Fixed with an
   explicit `PROVIDER_LABEL` map in `src/components/ConnectForm.tsx`.
 
-- [ ] **Easier ESPN sign-in (avoid manual espn_s2 / SWID copy)**
+- [x] **Easier ESPN sign-in (avoid manual espn_s2 / SWID copy)**
 
-  Private ESPN leagues currently require the user to open browser dev tools and
-  hand-copy the `espn_s2` and `SWID` cookies. That's the biggest friction point
-  in the ESPN flow. Explore a smoother path, e.g.:
-  - A guided helper with screenshots / a bookmarklet that surfaces the two
-    cookie values in one click.
-  - An ESPN OAuth / official login flow if one becomes viable (ESPN has no
-    official fantasy API today, so this may not be possible).
-  - Accepting a full pasted `Cookie` header and parsing the two values out.
-
-  Keep the same secret-handling guarantees: read-only, per-request, tab-only
-  storage, never persisted server-side or logged.
+  Done. The private-league section of `ConnectForm.tsx` now takes a single
+  pasted cookie blob (full `Cookie:` header, `document.cookie` dump, or a loose
+  paste) and auto-extracts `espn_s2` + `SWID` via the pure
+  `parseEspnCookies` helper (`src/lib/client/espn-cookies.ts`, unit-tested). It
+  also offers a drag-to-bookmarks **cookie-grabber bookmarklet** that copies the
+  values off a logged-in ESPN page in one click — with a graceful fallback, since
+  ESPN sometimes marks `espn_s2` HttpOnly (unreadable by JS), in which case the
+  manual/paste path still works. OAuth stays off the table (no official ESPN
+  API). Secret handling is unchanged: read-only, per-request headers, tab-only
+  `sessionStorage`, never persisted server-side or logged.
 
 - [ ] **Replace the default Vercel/Next favicon**
 
