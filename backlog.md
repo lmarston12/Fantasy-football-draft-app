@@ -113,11 +113,15 @@ priority order; check items off as they land.
   password, and is brittle against ESPN's Disney OneID login + CAPTCHA + MFA and
   bot detection. High effort, high risk, security regression — **do not pursue.**
 
-- [ ] **Replace the default Vercel/Next favicon**
+- [x] **Replace the default Vercel/Next favicon**
 
-  App still ships the stock framework favicon. Add a real icon so browser tabs
-  and bookmarks don't read as a generic scaffold. (`src/app/favicon.ico` /
-  `icon` metadata.)
+  Done. Replaced the stock `favicon.ico` with a football-brown badge and an
+  "FF" monogram + lace stitch, legible from 16px up. `src/app/icon.tsx` and
+  `src/app/apple-icon.tsx` generate the modern `<link rel="icon">` / iOS
+  home-screen variants at request time via `next/og`'s `ImageResponse`
+  (Next.js statically caches these); `src/app/favicon.ico` was regenerated
+  as a real multi-size (16/32/48) PNG-format `.ico` for the legacy
+  `/favicon.ico` request every browser makes regardless of the generated tag.
 
 - [ ] **Modernize the UI**
 
