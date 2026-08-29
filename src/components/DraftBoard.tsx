@@ -4,6 +4,12 @@ import { useMemo, useState } from "react";
 import type { LeagueData } from "@/hooks/useLeagueData";
 import type { DraftPick } from "@/lib/providers/types";
 import { buildDraftBoard } from "@/lib/rankings/engine";
+import {
+  bandFor,
+  computeConsumptionByPick,
+  type AvailabilityBand,
+} from "@/lib/draft/availability";
+import { nextPickNumber } from "@/lib/draft/pick-order";
 import { pprLabel } from "@/lib/providers/scoring-format";
 import { AvailablePlayersTable } from "./AvailablePlayersTable";
 import { MyRosterPanel } from "./MyRosterPanel";
@@ -62,6 +68,32 @@ export function DraftBoard({
   const hasUsableRanks =
     customRankById != null ||
     data.players.some((p) => p.searchRank != null);
+
+  // "Availability at your next pick": the overall pick this manager will make
+  // next (their "return pick"), and — from the league's own draft history —
+  // how likely each available player is to still be on the board by then.
+  const nextPick = useMemo(
+    () => nextPickNumber(data.draft, myRosterId, picks.length),
+    [data.draft, myRosterId, picks.length],
+  );
+
+  const consumption = useMemo(() => {
+    if (!data.history || nextPick == null) return null;
+    return computeConsumptionByPick(data.history, data.players, nextPick);
+  }, [data.history, data.players, nextPick]);
+
+  // Only band players when the ordering is real (usable ranks) and we have
+  // history-derived consumption; otherwise positional rank is meaningless.
+  const bandByPlayerId = useMemo(() => {
+    if (!consumption || !hasUsableRanks) return null;
+    const m = new Map<string, AvailabilityBand>();
+    for (const r of board.available) {
+      if (!r.player.position) continue;
+      const band = bandFor(r.player.position, r.positionalRank, consumption);
+      if (band) m.set(r.player.id, band);
+    }
+    return m.size > 0 ? m : null;
+  }, [consumption, hasUsableRanks, board.available]);
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
@@ -157,7 +189,21 @@ export function DraftBoard({
             </button>
           </div>
         </div>
-        <AvailablePlayersTable players={list} />
+        {bandByPlayerId && nextPick && (
+          <p className="mb-2 text-xs text-zinc-500">
+            Availability estimated at{" "}
+            <span className="font-medium text-zinc-700 dark:text-zinc-300">
+              your pick {nextPick}
+            </span>{" "}
+            from this league&apos;s past drafts. Toss-ups are the players worth
+            targeting now.
+          </p>
+        )}
+        <AvailablePlayersTable
+          players={list}
+          bandByPlayerId={bandByPlayerId}
+          nextPick={nextPick}
+        />
       </main>
     </div>
   );

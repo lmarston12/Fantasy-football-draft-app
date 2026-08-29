@@ -10,10 +10,12 @@ import { useEffect, useState } from "react";
 import {
   getDraft,
   getLeague,
+  getLeagueHistory,
   getPlayers,
 } from "@/lib/client/api";
 import type {
   DraftInfo,
+  LeagueHistory,
   LeagueSettings,
   NormalizedPlayer,
   ProviderAuth,
@@ -25,6 +27,12 @@ export interface LeagueData {
   teams: Team[];
   draft: DraftInfo;
   players: NormalizedPlayer[];
+  /**
+   * Past-season draft history, when the provider exposes it. Null for
+   * providers/leagues without history (Sleeper, or an ESPN league with none) —
+   * availability bands simply aren't shown in that case.
+   */
+  history: LeagueHistory | null;
 }
 
 interface State {
@@ -58,7 +66,7 @@ export function useLeagueData(
       try {
         const draft = await getDraft(provider, draftId, auth);
         const resolvedLeagueId = leagueId ?? draft.leagueId;
-        const [{ league, teams }, players] = await Promise.all([
+        const [{ league, teams }, players, history] = await Promise.all([
           resolvedLeagueId
             ? getLeague(provider, resolvedLeagueId, auth)
             : Promise.reject(
@@ -70,10 +78,17 @@ export function useLeagueData(
             resolvedLeagueId ?? undefined,
             auth,
           ),
+          // History is optional and best-effort: a failure here (unsupported
+          // provider, auth gap) must never block the board from loading.
+          resolvedLeagueId
+            ? getLeagueHistory(provider, resolvedLeagueId, auth).catch(
+                () => null,
+              )
+            : Promise.resolve(null),
         ]);
         if (cancelled) return;
         setState({
-          data: { league, teams, draft, players },
+          data: { league, teams, draft, players, history },
           loading: false,
           error: null,
         });

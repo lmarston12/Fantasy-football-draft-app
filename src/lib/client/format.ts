@@ -4,6 +4,7 @@
 
 import type { Position } from "../providers/types";
 import type { Tier } from "../rankings/types";
+import type { AvailabilityBand } from "../draft/availability";
 
 /** Tailwind classes for a position badge. */
 export function positionClasses(position: Position | null): string {
@@ -38,5 +39,29 @@ export function tierClasses(tier: Tier): string {
       return "bg-zinc-400 text-white dark:bg-zinc-600";
     case "Deep":
       return "bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200";
+  }
+}
+
+/** Short label for an availability band ("will this survive to my next pick?"). */
+export function availabilityLabel(band: AvailabilityBand): string {
+  switch (band) {
+    case "gone":
+      return "Likely gone";
+    case "tossup":
+      return "Toss-up";
+    case "there":
+      return "Likely there";
+  }
+}
+
+/** Tailwind classes for an availability-band chip. */
+export function availabilityClasses(band: AvailabilityBand): string {
+  switch (band) {
+    case "gone":
+      return "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300";
+    case "tossup":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+    case "there":
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
   }
 }
