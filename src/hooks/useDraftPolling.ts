@@ -3,9 +3,13 @@
 /**
  * Polls draft picks on an interval while a draft is live.
  *
- * - Polls every `intervalMs` (default 5s) only when the draft is "drafting".
+ * - Polls every `intervalMs` (default 5s) while a draft is live ("drafting")
+ *   OR scheduled but not started ("pre_draft"). Polling in pre_draft matters:
+ *   the draft status is captured when the page loads, so a draft that flips
+ *   from pre_draft to drafting afterward would otherwise never start updating
+ *   until a manual reload. Picks stream in the moment they're made either way.
  * - Pauses while the browser tab is hidden to be a good API citizen.
- * - Fetches once immediately for pre-draft/complete drafts (no polling loop).
+ * - Fetches once immediately for complete drafts (no polling loop).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -66,7 +70,7 @@ export function useDraftPolling(
       await refresh();
     })();
 
-    if (status !== "drafting") return;
+    if (status !== "drafting" && status !== "pre_draft") return;
 
     const tick = () => {
       if (document.visibilityState === "visible") refresh();
