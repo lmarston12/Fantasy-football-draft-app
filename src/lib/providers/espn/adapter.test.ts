@@ -50,6 +50,8 @@ function leagueFixture(): EspnLeagueResponse {
       picks: [
         { overallPickNumber: 1, roundId: 1, teamId: 3, playerId: 1001 },
         { overallPickNumber: 2, roundId: 1, teamId: 1, playerId: 1002 },
+        // ESPN pre-creates empty slots as playerId -1; must be filtered out.
+        { overallPickNumber: 3, roundId: 1, teamId: 2, playerId: -1 },
       ],
     },
   };

@@ -288,13 +288,18 @@ export class EspnProvider implements DraftProvider {
     const { season, leagueId } = parseEspnLeagueRef(draftRef);
     const league = await api.fetchLeague(season, leagueId, auth);
     const picks = league.draftDetail?.picks ?? [];
-    return picks.map((p) => ({
-      pickNo: p.overallPickNumber,
-      round: p.roundId,
-      rosterId: p.teamId,
-      pickedBy: p.teamId != null ? String(p.teamId) : null,
-      playerId: String(p.playerId),
-    }));
+    return picks
+      // ESPN pre-creates every pick slot for a scheduled draft with
+      // playerId -1, then fills them in as real picks are made. Drop the empty
+      // placeholders so "picks made" and the drafted set reflect reality.
+      .filter((p) => p.playerId > 0)
+      .map((p) => ({
+        pickNo: p.overallPickNumber,
+        round: p.roundId,
+        rosterId: p.teamId,
+        pickedBy: p.teamId != null ? String(p.teamId) : null,
+        playerId: String(p.playerId),
+      }));
   }
 
   /**
