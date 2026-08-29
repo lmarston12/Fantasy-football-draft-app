@@ -255,8 +255,9 @@ describe("EspnProvider.getPicks", () => {
 
 describe("EspnProvider.getPlayerCatalog", () => {
   it("normalizes players, skips unknown positions, and handles missing ranks", async () => {
-    const players = await espnProvider.getPlayerCatalog({ season: "2025" });
-    expect(api.fetchPlayers).toHaveBeenCalledWith("2025");
+    const players = await espnProvider.getPlayerCatalog({ leagueId: "2025-123" });
+    // Season + numeric id are parsed from the league ref for the league-scoped fetch.
+    expect(api.fetchPlayers).toHaveBeenCalledWith("2025", "123", undefined);
     // The staff entry (position 99) is dropped.
     expect(players.map((p) => p.name)).toEqual(["Star RB", "Star WR", "No Rank"]);
     expect(players[0]).toMatchObject({
@@ -269,6 +270,18 @@ describe("EspnProvider.getPlayerCatalog", () => {
     expect(players[1].searchRank).toBe(5);
     // No rank and no pro team -> nulls (CSV import is the fallback).
     expect(players[2]).toMatchObject({ searchRank: null, team: null });
+  });
+
+  it("forwards private-league auth to the league-scoped fetch", async () => {
+    const auth = { espnS2: "s2", swid: "{sw}" };
+    await espnProvider.getPlayerCatalog({ leagueId: "2025-123", auth });
+    expect(api.fetchPlayers).toHaveBeenCalledWith("2025", "123", auth);
+  });
+
+  it("rejects when no league is given (ESPN ranks are league-scoped)", async () => {
+    await expect(espnProvider.getPlayerCatalog({ season: "2025" })).rejects.toThrow(
+      /league/i,
+    );
   });
 });
 

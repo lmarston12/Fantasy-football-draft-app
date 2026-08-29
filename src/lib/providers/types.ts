@@ -225,11 +225,13 @@ export interface DraftProvider {
 
   /**
    * The platform's full player catalog, normalized. Some platforms (ESPN)
-   * scope the catalog by season and may need auth for private leagues; Sleeper
-   * ignores both.
+   * scope the catalog by league + season and need auth for private leagues,
+   * because that's the only place real draft ranks are exposed; Sleeper ignores
+   * all of these.
    */
   getPlayerCatalog(opts?: {
     season?: string;
+    leagueId?: string;
     auth?: ProviderAuth;
   }): Promise<NormalizedPlayer[]>;
 

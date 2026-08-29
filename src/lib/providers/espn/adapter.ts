@@ -359,9 +359,18 @@ export class EspnProvider implements DraftProvider {
 
   async getPlayerCatalog(opts?: {
     season?: string;
+    leagueId?: string;
+    auth?: ProviderAuth;
   }): Promise<NormalizedPlayer[]> {
-    const season = opts?.season ?? String(new Date().getFullYear());
-    const players = await api.fetchPlayers(season);
+    // ESPN's real draft ranks live only on the league-scoped catalog endpoint,
+    // so a league reference is required (it also carries the season).
+    if (!opts?.leagueId) {
+      throw new Error(
+        "ESPN rankings require a league. Open a league to load the player catalog.",
+      );
+    }
+    const { season, leagueId } = parseEspnLeagueRef(opts.leagueId);
+    const players = await api.fetchPlayers(season, leagueId, opts.auth);
     const result: NormalizedPlayer[] = [];
     for (const p of players) {
       const position = normalizePosition(p.defaultPositionId);

@@ -106,8 +106,13 @@ export function getDraftPicks(
 export function getPlayers(
   provider: string,
   season?: string,
+  leagueId?: string,
   auth?: ProviderAuth,
 ): Promise<NormalizedPlayer[]> {
-  const q = season ? `?season=${encodeURIComponent(season)}` : "";
+  const params = new URLSearchParams();
+  if (season) params.set("season", season);
+  // ESPN needs the league to fetch ranked players (its ranks are league-scoped).
+  if (leagueId) params.set("league", leagueId);
+  const q = params.toString() ? `?${params.toString()}` : "";
   return getJson(`${base(provider)}/players${q}`, auth);
 }
