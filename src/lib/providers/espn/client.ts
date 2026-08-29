@@ -71,12 +71,34 @@ export interface EspnScoringItem {
   points: number;
 }
 
+/** Won/lost/points record ESPN nests under `record.overall`. */
+export interface EspnTeamRecordSide {
+  wins?: number;
+  losses?: number;
+  ties?: number;
+  pointsFor?: number;
+  pointsAgainst?: number;
+}
+
 export interface EspnTeam {
   id: number;
   location?: string;
   nickname?: string;
   abbrev?: string;
   primaryOwner?: string | null;
+  /** Present with the `mStandings`/`mTeam` views on completed seasons. */
+  record?: { overall?: EspnTeamRecordSide };
+  /** Final calculated standing (1 = champion). 0/absent before a season ends. */
+  rankCalculatedFinal?: number;
+  playoffSeed?: number;
+}
+
+/** A league member (human), stable across seasons by their SWID-style `id`. */
+export interface EspnMember {
+  id: string;
+  displayName?: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 export interface EspnDraftPick {
@@ -85,11 +107,19 @@ export interface EspnDraftPick {
   roundPickNumber?: number;
   teamId: number;
   playerId: number;
+  /** Owner (member) SWID that made the pick; stable across seasons. */
+  memberId?: string | null;
+  keeper?: boolean;
 }
 
 export interface EspnLeagueResponse {
   id: number;
   seasonId: number;
+  /** Prior seasons ESPN has for this same league id, e.g. [2019, 2020, ...]. */
+  status?: {
+    previousSeasons?: number[];
+  };
+  members?: EspnMember[];
   settings?: {
     name?: string;
     size?: number;
@@ -148,6 +178,29 @@ export function fetchLeague(
 ): Promise<EspnLeagueResponse> {
   return getJson<EspnLeagueResponse>(
     leaguePath(season, leagueId, ["mSettings", "mTeam", "mDraftDetail"]),
+    { auth },
+  );
+}
+
+/**
+ * A single past season for history analysis: adds the `mStandings` view so the
+ * response carries each team's final `record` and `rankCalculatedFinal`, plus
+ * `members` for display names. The current-season `fetchLeague` omits standings
+ * because they don't exist pre-draft; keep them separate so live draft loads
+ * stay lean.
+ */
+export function fetchLeagueSeason(
+  season: string,
+  leagueId: string,
+  auth?: ProviderAuth,
+): Promise<EspnLeagueResponse> {
+  return getJson<EspnLeagueResponse>(
+    leaguePath(season, leagueId, [
+      "mSettings",
+      "mTeam",
+      "mStandings",
+      "mDraftDetail",
+    ]),
     { auth },
   );
 }

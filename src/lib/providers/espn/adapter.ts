@@ -12,18 +12,25 @@ import type {
   DraftPick,
   DraftProvider,
   DraftStatus,
+  LeagueHistory,
   LeagueSettings,
   NormalizedPlayer,
   Position,
   ProviderAuth,
   RosterSlot,
+  SeasonHistory,
+  SeasonStanding,
   SlotType,
   Team,
 } from "../types";
 import { normalizeScoring } from "./scoring";
 import { parseEspnLeagueRef } from "./ref";
 import * as api from "./client";
-import type { EspnLeagueResponse, EspnPlayer } from "./client";
+import type {
+  EspnLeagueResponse,
+  EspnMember,
+  EspnPlayer,
+} from "./client";
 
 /** ESPN lineup-slot id -> our SlotType (roster construction). */
 const SLOT_BY_LINEUP_ID: Record<number, SlotType> = {
@@ -173,6 +180,58 @@ function draftStatus(league: EspnLeagueResponse): DraftStatus {
   return "pre_draft";
 }
 
+function memberName(m: EspnMember): string | null {
+  if (m.displayName && m.displayName.trim()) return m.displayName.trim();
+  const composed = [m.firstName, m.lastName].filter(Boolean).join(" ").trim();
+  return composed || null;
+}
+
+/**
+ * Draft picks for one past season, keyed to the stable owner id. ESPN stamps
+ * `memberId` on each pick; when it's missing we fall back to the pick's team's
+ * `primaryOwner` so the pick still attributes to a cross-season manager.
+ */
+function seasonPicks(league: EspnLeagueResponse): DraftPick[] {
+  const ownerByTeam = new Map<number, string | null>();
+  for (const t of league.teams ?? []) ownerByTeam.set(t.id, t.primaryOwner ?? null);
+  return (league.draftDetail?.picks ?? []).map((p) => {
+    const owner = p.memberId ?? ownerByTeam.get(p.teamId) ?? null;
+    return {
+      pickNo: p.overallPickNumber,
+      round: p.roundId,
+      rosterId: p.teamId,
+      pickedBy: owner,
+      playerId: String(p.playerId),
+    };
+  });
+}
+
+/** Final standings for one past season, keyed by stable owner id. */
+function seasonStandings(league: EspnLeagueResponse): SeasonStanding[] {
+  const nameByOwner = new Map<string, string | null>();
+  for (const m of league.members ?? []) nameByOwner.set(m.id, memberName(m));
+  return (league.teams ?? []).map((t) => {
+    const o = t.record?.overall ?? {};
+    const ownerId = t.primaryOwner ?? String(t.id);
+    // rankCalculatedFinal is 0/absent until a season ends; treat that as unknown.
+    const finalRank =
+      typeof t.rankCalculatedFinal === "number" && t.rankCalculatedFinal > 0
+        ? t.rankCalculatedFinal
+        : null;
+    return {
+      ownerId,
+      ownerName: nameByOwner.get(ownerId) ?? teamName(t),
+      rosterId: t.id,
+      wins: o.wins ?? 0,
+      losses: o.losses ?? 0,
+      ties: o.ties ?? 0,
+      pointsFor: o.pointsFor ?? 0,
+      pointsAgainst: o.pointsAgainst ?? 0,
+      finalRank,
+    };
+  });
+}
+
 export class EspnProvider implements DraftProvider {
   readonly name = "espn";
 
@@ -236,6 +295,66 @@ export class EspnProvider implements DraftProvider {
       pickedBy: p.teamId != null ? String(p.teamId) : null,
       playerId: String(p.playerId),
     }));
+  }
+
+  /**
+   * Past-season draft history for this league, newest season first. Reads the
+   * definitive list of prior seasons from `status.previousSeasons` (no blind
+   * backward walk), then fetches each with standings. Per-season failures are
+   * tolerated: the season is skipped and `partial` is set, so a league that was
+   * recreated under a new id mid-history still returns what it can.
+   */
+  async getLeagueHistory(
+    leagueRef: string,
+    opts?: { maxSeasons?: number; auth?: ProviderAuth },
+  ): Promise<LeagueHistory> {
+    const { season, leagueId } = parseEspnLeagueRef(leagueRef);
+    const auth = opts?.auth;
+
+    // The reference season tells us which prior seasons exist. Include the
+    // reference season itself when its draft is already complete.
+    const current = await api.fetchLeagueSeason(season, leagueId, auth);
+    const prior = current.status?.previousSeasons ?? [];
+    const wanted: number[] = [...prior];
+    if (draftStatus(current) === "complete") wanted.push(Number(season));
+
+    // Newest first, de-duplicated, bounded.
+    const maxSeasons = opts?.maxSeasons ?? 8;
+    const ordered = Array.from(new Set(wanted))
+      .filter((y) => Number.isFinite(y))
+      .sort((a, b) => b - a)
+      .slice(0, maxSeasons);
+
+    const seasons: SeasonHistory[] = [];
+    const ownerNames: Record<string, string> = {};
+    let partial = false;
+
+    const addNames = (league: EspnLeagueResponse) => {
+      for (const m of league.members ?? []) {
+        const nm = memberName(m);
+        if (nm) ownerNames[m.id] = nm;
+      }
+    };
+    addNames(current);
+
+    for (const year of ordered) {
+      const yr = String(year);
+      try {
+        const league =
+          yr === season ? current : await api.fetchLeagueSeason(yr, leagueId, auth);
+        addNames(league);
+        seasons.push({
+          season: yr,
+          picks: seasonPicks(league),
+          standings: seasonStandings(league),
+        });
+      } catch {
+        // A recreated league id or an auth gap for this year: skip, flag partial.
+        partial = true;
+      }
+    }
+
+    return { seasons, ownerNames, partial };
   }
 
   async getPlayerCatalog(opts?: {
