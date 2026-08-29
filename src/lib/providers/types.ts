@@ -159,6 +159,13 @@ export interface SeasonHistory {
   season: string;
   picks: DraftPick[];
   standings: SeasonStanding[];
+  /**
+   * That season's roster construction, when the provider can report it. Lets
+   * callers detect roster drift (e.g. a flex added since) and calibrate for how
+   * differently the league will draft this year. Optional: providers that don't
+   * expose historical settings omit it.
+   */
+  rosterSlots?: RosterSlot[];
 }
 
 /**

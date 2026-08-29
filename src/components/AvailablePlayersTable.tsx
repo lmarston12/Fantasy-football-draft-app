@@ -3,7 +3,13 @@
 import { useMemo, useState } from "react";
 import type { Position } from "@/lib/providers/types";
 import type { RankedPlayer } from "@/lib/rankings/types";
-import { positionClasses, tierClasses } from "@/lib/client/format";
+import type { AvailabilityBand } from "@/lib/draft/availability";
+import {
+  availabilityClasses,
+  availabilityLabel,
+  positionClasses,
+  tierClasses,
+} from "@/lib/client/format";
 
 const FILTERS: (Position | "ALL")[] = [
   "ALL",
@@ -23,12 +29,24 @@ const FILTERS: (Position | "ALL")[] = [
 export function AvailablePlayersTable({
   players,
   limit = 60,
+  bandByPlayerId,
+  nextPick,
 }: {
   players: RankedPlayer[];
   limit?: number;
+  /**
+   * Availability band per player id ("will they survive to my next pick?").
+   * When provided, an extra column of chips is shown; null hides the feature.
+   */
+  bandByPlayerId?: Map<string, AvailabilityBand> | null;
+  /** The manager's next (return) pick number, for the column header. */
+  nextPick?: number | null;
 }) {
   const [filter, setFilter] = useState<Position | "ALL">("ALL");
   const [query, setQuery] = useState("");
+
+  const showAvailability = !!bandByPlayerId;
+  const columnCount = showAvailability ? 7 : 6;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -73,18 +91,28 @@ export function AvailablePlayersTable({
               <th className="px-2 py-2 text-right font-medium">Pos Rk</th>
               <th className="px-2 py-2 text-right font-medium">Value</th>
               <th className="px-2 py-2 font-medium">Tier</th>
+              {showAvailability && (
+                <th className="px-2 py-2 font-medium">
+                  {nextPick ? `@ Pick ${nextPick}` : "@ Next"}
+                </th>
+              )}
               <th className="px-3 py-2 font-medium">Why</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((r) => (
+            {filtered.map((r) => {
+              const band = bandByPlayerId?.get(r.player.id);
+              // A toss-up that fills a need is the sweet spot to target on the
+              // way back: flag it, but let an open-need row keep its emerald tint.
+              const rowClass = r.flags.fillsNeed
+                ? "bg-emerald-50/60 dark:bg-emerald-950/20"
+                : band === "tossup"
+                  ? "bg-amber-50/50 dark:bg-amber-950/15"
+                  : "";
+              return (
               <tr
                 key={r.player.id}
-                className={`border-t border-black/5 dark:border-white/5 ${
-                  r.flags.fillsNeed
-                    ? "bg-emerald-50/60 dark:bg-emerald-950/20"
-                    : ""
-                }`}
+                className={`border-t border-black/5 dark:border-white/5 ${rowClass}`}
               >
                 <td className="px-3 py-2">
                   <div className="font-medium text-zinc-900 dark:text-zinc-100">
@@ -123,15 +151,31 @@ export function AvailablePlayersTable({
                     {r.tier}
                   </span>
                 </td>
+                {showAvailability && (
+                  <td className="px-2 py-2">
+                    {band ? (
+                      <span
+                        className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium ${availabilityClasses(
+                          band,
+                        )}`}
+                      >
+                        {availabilityLabel(band)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-zinc-400">—</span>
+                    )}
+                  </td>
+                )}
                 <td className="px-3 py-2 text-xs text-zinc-500">
                   {r.reasons.slice(0, 2).join(" · ")}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {filtered.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={columnCount}
                   className="px-3 py-8 text-center text-sm text-zinc-400"
                 >
                   No players match.

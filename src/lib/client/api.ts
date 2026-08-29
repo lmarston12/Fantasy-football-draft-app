@@ -13,6 +13,7 @@
 import type {
   DraftInfo,
   DraftPick,
+  LeagueHistory,
   LeagueSettings,
   NormalizedPlayer,
   ProviderAuth,
@@ -88,6 +89,21 @@ export function getDraft(
 ): Promise<DraftInfo> {
   return getJson(
     `${base(provider)}/draft/${encodeURIComponent(draftId)}`,
+    auth,
+  );
+}
+
+/**
+ * Past-season draft history for a league. Providers without a traversable
+ * history return null (the route resolves the optional provider method).
+ */
+export function getLeagueHistory(
+  provider: string,
+  leagueId: string,
+  auth?: ProviderAuth,
+): Promise<LeagueHistory | null> {
+  return getJson(
+    `${base(provider)}/league/${encodeURIComponent(leagueId)}/history`,
     auth,
   );
 }
