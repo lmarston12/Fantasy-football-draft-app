@@ -16,15 +16,20 @@ export async function GET(
   { params }: RouteContext<"/api/[provider]/players">,
 ) {
   const { provider } = await params;
-  const season = new URL(req.url).searchParams.get("season") ?? "current";
+  const url = new URL(req.url);
+  const season = url.searchParams.get("season") ?? "current";
+  // ESPN scopes its ranked catalog by league (its ranks are league-endpoint
+  // only); the key includes it so leagues don't share a cached catalog.
+  const league = url.searchParams.get("league") ?? undefined;
   const auth = authFromHeaders(req);
   return handle(() =>
     cached<NormalizedPlayer[]>(
-      `${provider}:players:${season}`,
+      `${provider}:players:${season}:${league ?? ""}`,
       PLAYERS_TTL_MS,
       () =>
         getProvider(provider).getPlayerCatalog({
           season: season === "current" ? undefined : season,
+          leagueId: league,
           auth,
         }),
     ),

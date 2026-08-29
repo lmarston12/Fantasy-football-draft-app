@@ -64,7 +64,12 @@ export function useLeagueData(
             : Promise.reject(
                 new Error("Could not determine the league for this draft."),
               ),
-          getPlayers(provider, season ?? undefined, auth),
+          getPlayers(
+            provider,
+            season ?? undefined,
+            resolvedLeagueId ?? undefined,
+            auth,
+          ),
         ]);
         if (cancelled) return;
         setState({

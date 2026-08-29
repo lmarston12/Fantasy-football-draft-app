@@ -55,12 +55,31 @@ export function DraftBoard({
   const list = mode === "foryou" ? board.available : board.bestAvailable;
   const topPick = board.available[0];
 
+  // Without any usable ranks (no platform searchRank and no imported CSV), the
+  // engine can only order players by catalog position — which produces
+  // confident-looking but meaningless recommendations. Warn instead of
+  // pretending, and point at the CSV import that fixes it.
+  const hasUsableRanks =
+    customRankById != null ||
+    data.players.some((p) => p.searchRank != null);
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
       {/* Left rail */}
       <aside className="flex flex-col gap-4">
         <NeedsSummary needs={board.needs} />
-        {topPick && (
+        {!hasUsableRanks && (
+          <section className="rounded-xl border border-amber-500/40 bg-amber-50 p-4 dark:bg-amber-950/30">
+            <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+              No draft ranks available
+            </h2>
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              This catalog has no consensus ranks, so the ordering below is not
+              meaningful. Import a rankings CSV to get real recommendations.
+            </p>
+          </section>
+        )}
+        {hasUsableRanks && topPick && (
           <section className="rounded-xl border border-emerald-500/40 bg-emerald-50 p-4 dark:bg-emerald-950/30">
             <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
               Top pick for you

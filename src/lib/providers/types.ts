@@ -136,6 +136,44 @@ export interface DraftPick {
   playerId: string;
 }
 
+/**
+ * One manager's outcome in one past season, keyed by a stable cross-season
+ * owner id (ESPN's member SWID), not the per-season team id which can be
+ * reassigned. `finalRank` is the final standing (1 = champion) when known.
+ */
+export interface SeasonStanding {
+  ownerId: string;
+  ownerName: string | null;
+  /** Per-season team id, for joining to that season's picks. */
+  rosterId: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  finalRank: number | null;
+}
+
+/** A completed past season: its draft picks plus how each manager finished. */
+export interface SeasonHistory {
+  season: string;
+  picks: DraftPick[];
+  standings: SeasonStanding[];
+}
+
+/**
+ * Multi-season draft history for a league, newest season first. `ownerNames`
+ * maps stable owner id -> display name so callers can label managers whose
+ * team name changed year to year. `partial` is true when some prior seasons
+ * couldn't be fetched (a recreated league id, an auth gap), so callers can
+ * say "history back to season X" rather than implying completeness.
+ */
+export interface LeagueHistory {
+  seasons: SeasonHistory[];
+  ownerNames: Record<string, string>;
+  partial: boolean;
+}
+
 export type DraftStatus = "pre_draft" | "drafting" | "complete" | "unknown";
 
 /** Draft metadata, including the slot -> roster mapping and order. */
@@ -187,11 +225,24 @@ export interface DraftProvider {
 
   /**
    * The platform's full player catalog, normalized. Some platforms (ESPN)
-   * scope the catalog by season and may need auth for private leagues; Sleeper
-   * ignores both.
+   * scope the catalog by league + season and need auth for private leagues,
+   * because that's the only place real draft ranks are exposed; Sleeper ignores
+   * all of these.
    */
   getPlayerCatalog(opts?: {
     season?: string;
+    leagueId?: string;
     auth?: ProviderAuth;
   }): Promise<NormalizedPlayer[]>;
+
+  /**
+   * Past-season draft history for this league, for calibrating recommendations
+   * to how this specific league drafts. Optional: not every platform exposes a
+   * traversable history. ESPN reads it from `status.previousSeasons`; Sleeper
+   * could walk `previous_league_id`. Callers must feature-detect.
+   */
+  getLeagueHistory?(
+    leagueId: string,
+    opts?: { maxSeasons?: number; auth?: ProviderAuth },
+  ): Promise<LeagueHistory>;
 }

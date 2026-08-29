@@ -71,12 +71,34 @@ export interface EspnScoringItem {
   points: number;
 }
 
+/** Won/lost/points record ESPN nests under `record.overall`. */
+export interface EspnTeamRecordSide {
+  wins?: number;
+  losses?: number;
+  ties?: number;
+  pointsFor?: number;
+  pointsAgainst?: number;
+}
+
 export interface EspnTeam {
   id: number;
   location?: string;
   nickname?: string;
   abbrev?: string;
   primaryOwner?: string | null;
+  /** Present with the `mStandings`/`mTeam` views on completed seasons. */
+  record?: { overall?: EspnTeamRecordSide };
+  /** Final calculated standing (1 = champion). 0/absent before a season ends. */
+  rankCalculatedFinal?: number;
+  playoffSeed?: number;
+}
+
+/** A league member (human), stable across seasons by their SWID-style `id`. */
+export interface EspnMember {
+  id: string;
+  displayName?: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 export interface EspnDraftPick {
@@ -85,11 +107,19 @@ export interface EspnDraftPick {
   roundPickNumber?: number;
   teamId: number;
   playerId: number;
+  /** Owner (member) SWID that made the pick; stable across seasons. */
+  memberId?: string | null;
+  keeper?: boolean;
 }
 
 export interface EspnLeagueResponse {
   id: number;
   seasonId: number;
+  /** Prior seasons ESPN has for this same league id, e.g. [2019, 2020, ...]. */
+  status?: {
+    previousSeasons?: number[];
+  };
+  members?: EspnMember[];
   settings?: {
     name?: string;
     size?: number;
@@ -128,8 +158,23 @@ export interface EspnPlayer {
   draftRanksByRankType?: Record<string, EspnRankByType>;
 }
 
-/** Season-level players endpoint returns bare player objects. */
-type EspnPlayersResponse = EspnPlayer[];
+/**
+ * The league-scoped `kona_player_info` view wraps each player in an entry with
+ * roster/ownership metadata we ignore; the ranked player is under `.player`.
+ */
+interface EspnKonaPlayerEntry {
+  player?: EspnPlayer;
+}
+interface EspnKonaPlayersResponse {
+  players?: EspnKonaPlayerEntry[];
+}
+
+/**
+ * How many players to pull for the catalog. ESPN returns them pre-sorted by
+ * draft rank, so this is effectively "top N by ADP" — generous enough to cover
+ * every pick in a deep league plus late-round fliers.
+ */
+const PLAYER_CATALOG_LIMIT = 1000;
 
 // ---- Endpoint calls ----
 
@@ -153,14 +198,49 @@ export function fetchLeague(
 }
 
 /**
- * The player catalog for a season. Uses the public season-level endpoint so it
- * needs neither a league id nor auth. `x-fantasy-filter` bounds the result and
- * sorts by draft rank so the most relevant players come first.
+ * A single past season for history analysis: adds the `mStandings` view so the
+ * response carries each team's final `record` and `rankCalculatedFinal`, plus
+ * `members` for display names. The current-season `fetchLeague` omits standings
+ * because they don't exist pre-draft; keep them separate so live draft loads
+ * stay lean.
  */
-export function fetchPlayers(season: string): Promise<EspnPlayersResponse> {
+export function fetchLeagueSeason(
+  season: string,
+  leagueId: string,
+  auth?: ProviderAuth,
+): Promise<EspnLeagueResponse> {
+  return getJson<EspnLeagueResponse>(
+    leaguePath(season, leagueId, [
+      "mSettings",
+      "mTeam",
+      "mStandings",
+      "mDraftDetail",
+    ]),
+    { auth },
+  );
+}
+
+/**
+ * The player catalog with real draft ranks, pre-sorted by ADP.
+ *
+ * Must use the *league-scoped* `kona_player_info` view: the public season-level
+ * `players_wl` endpoint returns `draftRanksByRankType` empty (no ranks) AND
+ * ignores the `x-fantasy-filter` sort/limit, so it yields an unranked, unsorted
+ * dump. The league endpoint honors the filter (returns exactly `limit` players,
+ * sorted by PPR draft rank) and populates the ranks. It works for public
+ * leagues without auth; private leagues pass espn_s2/SWID like every other call.
+ *
+ * Returns bare `EspnPlayer[]` (unwrapped from kona's `{ players: [{ player }] }`)
+ * so callers see the same shape the old season endpoint gave.
+ */
+export async function fetchPlayers(
+  season: string,
+  leagueId: string,
+  auth?: ProviderAuth,
+): Promise<EspnPlayer[]> {
   const fantasyFilter = {
     players: {
-      limit: 1500,
+      limit: PLAYER_CATALOG_LIMIT,
       sortDraftRanks: {
         sortPriority: 100,
         sortAsc: true,
@@ -168,10 +248,11 @@ export function fetchPlayers(season: string): Promise<EspnPlayersResponse> {
       },
     },
   };
-  return getJson<EspnPlayersResponse>(
-    `/apis/v3/games/ffl/seasons/${encodeURIComponent(
-      season,
-    )}/players?scoringPeriodId=0&view=players_wl`,
-    { fantasyFilter },
+  const res = await getJson<EspnKonaPlayersResponse>(
+    leaguePath(season, leagueId, ["kona_player_info"]),
+    { auth, fantasyFilter },
   );
+  return (res.players ?? [])
+    .map((e) => e.player)
+    .filter((p): p is EspnPlayer => Boolean(p));
 }

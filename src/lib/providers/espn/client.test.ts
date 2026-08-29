@@ -18,6 +18,12 @@ function lastHeaders(f: unknown): Record<string, string> {
   return init.headers as Record<string, string>;
 }
 
+/** Grab the URL passed to the last fetch call. */
+function lastUrl(f: unknown): string {
+  const mock = f as unknown as { mock: { calls: unknown[][] } };
+  return mock.mock.calls[0][0] as string;
+}
+
 beforeEach(() => {
   delete process.env.ESPN_BASE_URL;
 });
@@ -50,12 +56,31 @@ describe("espn client auth handling", () => {
 });
 
 describe("espn client player catalog", () => {
-  it("sends an x-fantasy-filter and no cookie", async () => {
-    global.fetch = mockOk([]);
-    await fetchPlayers("2025");
+  it("hits the league-scoped kona endpoint with a sort filter, no cookie for public leagues", async () => {
+    global.fetch = mockOk({ players: [] });
+    await fetchPlayers("2025", "123");
     const headers = lastHeaders(global.fetch);
+    const url = lastUrl(global.fetch);
+    // Ranks live only on the league-scoped kona_player_info view.
+    expect(url).toContain("/leagues/123");
+    expect(url).toContain("view=kona_player_info");
     expect(headers["x-fantasy-filter"]).toContain("sortDraftRanks");
     expect(headers.cookie).toBeUndefined();
+  });
+
+  it("forwards private-league auth as a cookie", async () => {
+    global.fetch = mockOk({ players: [] });
+    await fetchPlayers("2025", "123", { espnS2: "S2", swid: "{SW}" });
+    expect(lastHeaders(global.fetch).cookie).toBe("espn_s2=S2; SWID={SW}");
+  });
+
+  it("unwraps kona's { players: [{ player }] } shape to bare players", async () => {
+    global.fetch = mockOk({
+      players: [{ player: { id: 1, fullName: "A" } }, { player: { id: 2 } }, {}],
+    });
+    const players = await fetchPlayers("2025", "123");
+    // The entry without a `.player` is dropped.
+    expect(players.map((p) => p.id)).toEqual([1, 2]);
   });
 });
 

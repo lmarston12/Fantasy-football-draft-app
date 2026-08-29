@@ -4,6 +4,7 @@ import type { EspnLeagueResponse, EspnPlayer } from "./client";
 
 vi.mock("./client", () => ({
   fetchLeague: vi.fn(),
+  fetchLeagueSeason: vi.fn(),
   fetchPlayers: vi.fn(),
 }));
 
@@ -77,9 +78,110 @@ function playersFixture(): EspnPlayer[] {
 
 beforeEach(() => {
   (api.fetchLeague as Mock).mockReset();
+  (api.fetchLeagueSeason as Mock).mockReset();
   (api.fetchPlayers as Mock).mockReset();
   (api.fetchLeague as Mock).mockResolvedValue(leagueFixture());
   (api.fetchPlayers as Mock).mockResolvedValue(playersFixture());
+});
+
+/** A completed past season with standings + owner-stamped picks. */
+function seasonFixture(
+  season: number,
+  opts: { previousSeasons?: number[] } = {},
+): EspnLeagueResponse {
+  return {
+    id: 123,
+    seasonId: season,
+    status: opts.previousSeasons
+      ? { previousSeasons: opts.previousSeasons }
+      : undefined,
+    members: [
+      { id: "{OWN1}", displayName: "Alice" },
+      { id: "{OWN2}", firstName: "Bob", lastName: "Jones" },
+    ],
+    settings: { name: "Test", size: 2, draftSettings: { type: "SNAKE" } },
+    teams: [
+      {
+        id: 1,
+        abbrev: "AAA",
+        primaryOwner: "{OWN1}",
+        rankCalculatedFinal: 1,
+        record: { overall: { wins: 10, losses: 3, ties: 0, pointsFor: 1500, pointsAgainst: 1200 } },
+      },
+      {
+        id: 2,
+        abbrev: "BBB",
+        primaryOwner: "{OWN2}",
+        rankCalculatedFinal: 2,
+        record: { overall: { wins: 7, losses: 6, ties: 0, pointsFor: 1300, pointsAgainst: 1350 } },
+      },
+    ],
+    draftDetail: {
+      drafted: true,
+      inProgress: false,
+      picks: [
+        { overallPickNumber: 1, roundId: 1, teamId: 1, playerId: 1001, memberId: "{OWN1}" },
+        { overallPickNumber: 2, roundId: 1, teamId: 2, playerId: 1002, memberId: "{OWN2}" },
+      ],
+    },
+  };
+}
+
+describe("EspnProvider.getLeagueHistory", () => {
+  it("fetches prior seasons from status.previousSeasons, newest first, keyed by owner", async () => {
+    (api.fetchLeagueSeason as Mock).mockImplementation((season: string) =>
+      Promise.resolve(
+        season === "2025"
+          ? seasonFixture(2025, { previousSeasons: [2023, 2024] })
+          : seasonFixture(Number(season)),
+      ),
+    );
+
+    const history = await espnProvider.getLeagueHistory(REF);
+
+    // Reference season is complete, so it's included alongside the two priors.
+    expect(history.seasons.map((s) => s.season)).toEqual(["2025", "2024", "2023"]);
+    expect(history.partial).toBe(false);
+    expect(history.ownerNames).toMatchObject({ "{OWN1}": "Alice", "{OWN2}": "Bob Jones" });
+
+    const y2025 = history.seasons[0];
+    expect(y2025.picks[0]).toMatchObject({ pickedBy: "{OWN1}", playerId: "1001" });
+    expect(y2025.standings[0]).toMatchObject({
+      ownerId: "{OWN1}",
+      ownerName: "Alice",
+      wins: 10,
+      pointsFor: 1500,
+      finalRank: 1,
+    });
+  });
+
+  it("skips seasons that fail to load and flags the result partial", async () => {
+    (api.fetchLeagueSeason as Mock).mockImplementation((season: string) => {
+      if (season === "2025") {
+        return Promise.resolve(seasonFixture(2025, { previousSeasons: [2023, 2024] }));
+      }
+      if (season === "2024") return Promise.reject(new Error("league not visible"));
+      return Promise.resolve(seasonFixture(Number(season)));
+    });
+
+    const history = await espnProvider.getLeagueHistory(REF);
+    expect(history.seasons.map((s) => s.season)).toEqual(["2025", "2023"]);
+    expect(history.partial).toBe(true);
+  });
+
+  it("excludes the reference season when its draft is not complete", async () => {
+    (api.fetchLeagueSeason as Mock).mockImplementation((season: string) => {
+      if (season === "2025") {
+        const f = seasonFixture(2025, { previousSeasons: [2024] });
+        f.draftDetail = { drafted: false, inProgress: false, picks: [] };
+        return Promise.resolve(f);
+      }
+      return Promise.resolve(seasonFixture(Number(season)));
+    });
+
+    const history = await espnProvider.getLeagueHistory(REF);
+    expect(history.seasons.map((s) => s.season)).toEqual(["2024"]);
+  });
 });
 
 describe("EspnProvider.getLeague", () => {
@@ -153,8 +255,9 @@ describe("EspnProvider.getPicks", () => {
 
 describe("EspnProvider.getPlayerCatalog", () => {
   it("normalizes players, skips unknown positions, and handles missing ranks", async () => {
-    const players = await espnProvider.getPlayerCatalog({ season: "2025" });
-    expect(api.fetchPlayers).toHaveBeenCalledWith("2025");
+    const players = await espnProvider.getPlayerCatalog({ leagueId: "2025-123" });
+    // Season + numeric id are parsed from the league ref for the league-scoped fetch.
+    expect(api.fetchPlayers).toHaveBeenCalledWith("2025", "123", undefined);
     // The staff entry (position 99) is dropped.
     expect(players.map((p) => p.name)).toEqual(["Star RB", "Star WR", "No Rank"]);
     expect(players[0]).toMatchObject({
@@ -167,6 +270,18 @@ describe("EspnProvider.getPlayerCatalog", () => {
     expect(players[1].searchRank).toBe(5);
     // No rank and no pro team -> nulls (CSV import is the fallback).
     expect(players[2]).toMatchObject({ searchRank: null, team: null });
+  });
+
+  it("forwards private-league auth to the league-scoped fetch", async () => {
+    const auth = { espnS2: "s2", swid: "{sw}" };
+    await espnProvider.getPlayerCatalog({ leagueId: "2025-123", auth });
+    expect(api.fetchPlayers).toHaveBeenCalledWith("2025", "123", auth);
+  });
+
+  it("rejects when no league is given (ESPN ranks are league-scoped)", async () => {
+    await expect(espnProvider.getPlayerCatalog({ season: "2025" })).rejects.toThrow(
+      /league/i,
+    );
   });
 });
 
