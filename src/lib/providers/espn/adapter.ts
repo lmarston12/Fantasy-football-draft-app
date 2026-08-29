@@ -347,6 +347,7 @@ export class EspnProvider implements DraftProvider {
           season: yr,
           picks: seasonPicks(league),
           standings: seasonStandings(league),
+          rosterSlots: rosterSlots(league),
         });
       } catch {
         // A recreated league id or an auth gap for this year: skip, flag partial.

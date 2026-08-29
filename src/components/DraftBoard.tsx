@@ -5,6 +5,7 @@ import type { LeagueData } from "@/hooks/useLeagueData";
 import type { DraftPick } from "@/lib/providers/types";
 import { buildDraftBoard } from "@/lib/rankings/engine";
 import {
+  adjustForRosterDrift,
   bandFor,
   computeConsumptionByPick,
   type AvailabilityBand,
@@ -77,23 +78,36 @@ export function DraftBoard({
     [data.draft, myRosterId, picks.length],
   );
 
-  const consumption = useMemo(() => {
+  const availability = useMemo(() => {
     if (!data.history || nextPick == null) return null;
-    return computeConsumptionByPick(data.history, data.players, nextPick);
-  }, [data.history, data.players, nextPick]);
+    const base = computeConsumptionByPick(data.history, data.players, nextPick);
+    // Correct for roster changes since the history was drafted (e.g. an added
+    // flex this year makes RB/WR/TE clear earlier than past drafts imply).
+    return adjustForRosterDrift(base, {
+      league: data.league,
+      history: data.history,
+      pickNo: nextPick,
+    });
+  }, [data.history, data.players, data.league, nextPick]);
 
   // Only band players when the ordering is real (usable ranks) and we have
   // history-derived consumption; otherwise positional rank is meaningless.
   const bandByPlayerId = useMemo(() => {
-    if (!consumption || !hasUsableRanks) return null;
+    if (!availability || !hasUsableRanks) return null;
     const m = new Map<string, AvailabilityBand>();
     for (const r of board.available) {
       if (!r.player.position) continue;
-      const band = bandFor(r.player.position, r.positionalRank, consumption);
+      const band = bandFor(
+        r.player.position,
+        r.positionalRank,
+        availability.consumption,
+      );
       if (band) m.set(r.player.id, band);
     }
     return m.size > 0 ? m : null;
-  }, [consumption, hasUsableRanks, board.available]);
+  }, [availability, hasUsableRanks, board.available]);
+
+  const driftShifted = availability?.shifted ?? [];
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
@@ -197,6 +211,13 @@ export function DraftBoard({
             </span>{" "}
             from this league&apos;s past drafts. Toss-ups are the players worth
             targeting now.
+            {driftShifted.length > 0 && (
+              <>
+                {" "}
+                Adjusted for this year&apos;s roster change (more{" "}
+                {driftShifted.join("/")} demand than past seasons).
+              </>
+            )}
           </p>
         )}
         <AvailablePlayersTable

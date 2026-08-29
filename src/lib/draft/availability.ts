@@ -14,9 +14,11 @@
 
 import type {
   LeagueHistory,
+  LeagueSettings,
   NormalizedPlayer,
   Position,
 } from "../providers/types";
+import { perTeamPositionDemand } from "./needs";
 
 const ALL_POSITIONS: Position[] = ["QB", "RB", "WR", "TE", "K", "DEF"];
 
@@ -126,4 +128,68 @@ export function bandFor(
   if (z <= -0.6) return "gone";
   if (z >= 0.9) return "there";
   return "tossup";
+}
+
+/** Consumption after a roster-drift pass, plus which positions it shifted. */
+export interface RosterDriftResult {
+  consumption: Record<Position, Consumption>;
+  /** Positions whose consumption was shifted up (bands made more conservative). */
+  shifted: Position[];
+}
+
+/**
+ * Correct the empirical consumption for roster changes since the history was
+ * drafted.
+ *
+ * The consumption means come from *past* drafts, run under *past* roster
+ * settings. If this year's roster demands more of a position than those seasons
+ * did — most commonly an added FLEX pulling RB/WR/TE forward — those players
+ * will clear earlier than history alone predicts, so the raw bands read
+ * optimistic. We nudge the affected means up by the extra league-wide starter
+ * demand, scaled by how much of the draft happens before the target pick.
+ *
+ * Only positions whose demand *increased* are shifted (bands only get more
+ * conservative, never looser), and only when at least one past season carries
+ * its roster construction so the drift is real rather than assumed. Positions
+ * with no empirical signal are left untouched.
+ */
+export function adjustForRosterDrift(
+  consumption: Record<Position, Consumption>,
+  params: { league: LeagueSettings; history: LeagueHistory; pickNo: number },
+): RosterDriftResult {
+  const { league, history, pickNo } = params;
+  const teamCount = league.teamCount;
+  const rosterSize = league.rosterSlots.length;
+  if (teamCount <= 0 || rosterSize <= 0 || pickNo <= 1) {
+    return { consumption, shifted: [] };
+  }
+
+  // Historical per-team demand, averaged over seasons that carry their roster.
+  const histDemands = history.seasons
+    .filter((s) => s.rosterSlots && s.rosterSlots.length > 0)
+    .map((s) => perTeamPositionDemand({ ...league, rosterSlots: s.rosterSlots! }));
+  if (histDemands.length === 0) return { consumption, shifted: [] };
+
+  const current = perTeamPositionDemand(league);
+  // Fraction of the whole draft that occurs before the target pick. The extra
+  // flex starters are front-loaded; a uniform fraction keeps the nudge modest.
+  const beforeFraction = Math.min(1, Math.max(0, (pickNo - 1) / (teamCount * rosterSize)));
+
+  const out = { ...consumption };
+  const shifted: Position[] = [];
+  for (const pos of ALL_POSITIONS) {
+    const c = consumption[pos];
+    // Don't fabricate a band where there was no empirical signal.
+    if (c.mean === 0 && c.sd === 0) continue;
+    const histAvg =
+      histDemands.reduce((a, d) => a + d[pos], 0) / histDemands.length;
+    const deltaPerTeam = current[pos] - histAvg;
+    if (deltaPerTeam <= 1e-9) continue; // only tighten on added demand
+    const shift = deltaPerTeam * teamCount * beforeFraction;
+    if (shift <= 1e-9) continue;
+    out[pos] = { mean: c.mean + shift, sd: c.sd };
+    shifted.push(pos);
+  }
+
+  return { consumption: out, shifted };
 }
